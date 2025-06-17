@@ -3,17 +3,15 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import pandas as pd
 
-# Pobieranie danych z sekcji Secrets
+# Autoryzacja z secretów
 CLIENT_ID = st.secrets["CLIENT_ID"]
 CLIENT_SECRET = st.secrets["CLIENT_SECRET"]
 
-# Autoryzacja z użyciem client credentials
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET
 ))
 
-# UI
 st.title("🎧 Znajdź podobne piosenki na Spotify")
 st.write("Wpisz tytuł i wykonawcę, a znajdziemy muzyczne dusze pokrewne.")
 
@@ -32,18 +30,28 @@ if st.button("Szukaj podobnych"):
         track_id = utwor["id"]
         st.success(f"Znaleziono: {utwor['name']} – {utwor['artists'][0]['name']}")
 
-        features = sp.audio_features(track_id)[0]
+        features_list = sp.audio_features([track_id])
+        if not features_list or features_list[0] is None:
+            st.error("Brak danych audio dla tego utworu. Spróbuj inny.")
+            st.stop()
 
-        podobne = sp.recommendations(
-            seed_tracks=[track_id],
-            target_energy=features["energy"],
-            target_valence=features["valence"],
-            target_danceability=features["danceability"],
-            target_acousticness=features["acousticness"],
-            target_instrumentalness=features["instrumentalness"],
-            target_tempo=features["tempo"],
-            limit=limit
-        )
+        features = features_list[0]
+
+        try:
+            podobne = sp.recommendations(
+                seed_tracks=[track_id],
+                seed_genres=["alternative"],  # Możesz zmienić na pop, hip-hop, itp.
+                target_energy=features["energy"],
+                target_valence=features["valence"],
+                target_danceability=features["danceability"],
+                target_acousticness=features["acousticness"],
+                target_instrumentalness=features["instrumentalness"],
+                target_tempo=features["tempo"],
+                limit=limit
+            )
+        except Exception as e:
+            st.error(f"Błąd podczas pobierania rekomendacji: {e}")
+            st.stop()
 
         lista = []
         for track in podobne["tracks"]:
