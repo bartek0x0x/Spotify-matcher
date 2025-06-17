@@ -2,9 +2,7 @@ import streamlit as st
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import pandas as pd
-import requests
 
-# Autoryzacja
 CLIENT_ID = st.secrets["CLIENT_ID"]
 CLIENT_SECRET = st.secrets["CLIENT_SECRET"]
 
@@ -32,51 +30,15 @@ if st.button("Szukaj podobnych"):
     track_id = utwor["id"]
     st.success(f"Znaleziono: {utwor['name']} – {utwor['artists'][0]['name']}")
 
-    # Pobieranie tokena ręcznie
-    try:
-        auth_response = requests.post(
-            'https://accounts.spotify.com/api/token',
-            data={'grant_type': 'client_credentials'},
-            auth=(CLIENT_ID, CLIENT_SECRET)
-        )
-        access_token = auth_response.json().get("access_token")
-        headers = {"Authorization": f"Bearer {access_token}"}
-    except Exception as e:
-        st.error(f"Nie udało się uzyskać tokena dostępu: {e}")
-        st.stop()
-
-    # Pobieranie danych audio
-    try:
-        r = requests.get(
-            f"https://api.spotify.com/v1/audio-features/{track_id}",
-            headers=headers
-        )
-        if r.status_code != 200:
-            st.error("Nie udało się pobrać danych audio dla tego utworu.")
-            st.stop()
-        features = r.json()
-    except Exception as e:
-        st.error(f"Nie udało się pobrać danych audio: {e}")
-        st.stop()
-
-    # Szukanie podobnych
     try:
         podobne = sp.recommendations(
             seed_tracks=[track_id],
-            seed_genres=["pop"],
-            target_energy=features["energy"],
-            target_valence=features["valence"],
-            target_danceability=features["danceability"],
-            target_acousticness=features["acousticness"],
-            target_instrumentalness=features["instrumentalness"],
-            target_tempo=features["tempo"],
             limit=limit
         )
     except Exception as e:
         st.error(f"Błąd podczas pobierania rekomendacji: {e}")
         st.stop()
 
-    # Wyświetlanie wyników
     lista = []
     for track in podobne["tracks"]:
         lista.append({
