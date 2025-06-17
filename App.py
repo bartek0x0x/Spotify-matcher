@@ -1,51 +1,30 @@
-import streamlit as st import requests import base64
+import streamlit as st import requests import base64 import json
 
-Sekcja autoryzacji
-
-CLIENT_ID = st.secrets["CLIENT_ID"] CLIENT_SECRET = st.secrets["CLIENT_SECRET"]
-
-AUTH_URL = 'https://accounts.spotify.com/api/token' auth_response = requests.post(AUTH_URL, { 'grant_type': 'client_credentials', 'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET, })
-
-auth_response_data = auth_response.json() access_token = auth_response_data['access_token'] headers = { 'Authorization': f'Bearer {access_token}' }
+Tytuł aplikacji
 
 st.title("🎧 Znajdź podobne piosenki na Spotify") st.write("Wpisz tytuł i wykonawcę, a znajdziemy muzyczne dusze pokrewne.")
 
+Formularz wejściowy
+
 title = st.text_input("Tytuł piosenki", "Blinding Lights") artist = st.text_input("Wykonawca", "The Weeknd") limit = st.slider("Ile podobnych utworów chcesz?", 1, 20, 10)
 
-if st.button("Szukaj podobnych"): # Wyszukiwanie ID utworu search_url = f"https://api.spotify.com/v1/search?q={title}%20{artist}&type=track&limit=1" search_response = requests.get(search_url, headers=headers)
+Sekrety
 
-if search_response.status_code != 200:
-    st.error(f"Nie udało się znaleźć utworu: {search_response.status_code}")
-else:
-    search_results = search_response.json()
-    items = search_results.get('tracks', {}).get('items', [])
+CLIENT_ID = st.secrets["CLIENT_ID"] CLIENT_SECRET = st.secrets["CLIENT_SECRET"]
 
-    if not items:
-        st.warning("Nie znaleziono takiego utworu.")
-    else:
-        track = items[0]
-        track_id = track['id']
-        track_name = track['name']
-        track_artist = track['artists'][0]['name']
-        st.success(f"Znaleziono: {track_name} – {track_artist}")
+Funkcja autoryzacji
 
-        # Pobieranie rekomendacji
-        rec_url = f"https://api.spotify.com/v1/recommendations?limit={limit}&seed_tracks={track_id}"
-        rec_response = requests.get(rec_url, headers=headers)
+def get_token(): auth_str = f"{CLIENT_ID}:{CLIENT_SECRET}" b64_auth_str = base64.b64encode(auth_str.encode()).decode() headers = { "Authorization": f"Basic {b64_auth_str}", "Content-Type": "application/x-www-form-urlencoded" } data = {"grant_type": "client_credentials"} resp = requests.post("https://accounts.spotify.com/api/token", headers=headers, data=data) return resp.json().get("access_token")
 
-        if rec_response.status_code != 200:
-            st.error(f"Spotify error {rec_response.status_code}:")
-        else:
-            rec_data = rec_response.json()
-            rec_tracks = rec_data.get('tracks', [])
+Szukanie ID piosenki
 
-            if not rec_tracks:
-                st.warning("Brak rekomendacji.")
-            else:
-                st.subheader("🎵 Podobne utwory:")
-                for rec in rec_tracks:
-                    name = rec['name']
-                    artist = rec['artists'][0]['name']
-                    url = rec['external_urls']['spotify']
-                    st.markdown(f"[{name} – {artist}]({url})")
+def get_track_id(token, title, artist): headers = {"Authorization": f"Bearer {token}"} query = f"track:{title} artist:{artist}" url = f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1" resp = requests.get(url, headers=headers) results = resp.json() items = results.get("tracks", {}).get("items", []) if items: return items[0]["id"], f"Znaleziono: {items[0]['name']} – {items[0]['artists'][0]['name']}" return None, "Nie znaleziono utworu."
+
+Pobieranie audio features i rekomendacji
+
+def get_recommendations(token, track_id, limit): headers = {"Authorization": f"Bearer {token}"} url = f"https://api.spotify.com/v1/recommendations?seed_tracks={track_id}&limit={limit}" resp = requests.get(url, headers=headers) if resp.status_code == 200: recs = resp.json().get("tracks", []) return [f"{t['name']} – {t['artists'][0]['name']}" for t in recs] else: return f"Spotify error {resp.status_code}: {resp.text}"
+
+Główna akcja
+
+if st.button("Szukaj podobnych"): token = get_token() if token: track_id, message = get_track_id(token, title, artist) st.success(message) if track_id: recs = get_recommendations(token, track_id, limit) if isinstance(recs, list): st.subheader("🎵 Podobne utwory:") for r in recs: st.write(r) else: st.error(recs) else: st.warning("Nie znaleziono ID utworu.") else: st.error("Nie udało się pobrać tokenu dostępu do Spotify.")
 
