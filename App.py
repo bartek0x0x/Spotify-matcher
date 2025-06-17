@@ -1,53 +1,64 @@
 import streamlit as st
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
+import requests
 import pandas as pd
 
+# Dane logowania do API Spotify
 CLIENT_ID = st.secrets["CLIENT_ID"]
 CLIENT_SECRET = st.secrets["CLIENT_SECRET"]
 
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET
-))
+# Funkcja pobierająca token
+def get_token():
+    auth_response = requests.post(
+        'https://accounts.spotify.com/api/token',
+        data={'grant_type': 'client_credentials'},
+        auth=(CLIENT_ID, CLIENT_SECRET)
+    )
+    return auth_response.json().get("access_token")
 
+# Tytuł aplikacji
 st.title("🎧 Znajdź podobne piosenki na Spotify")
 st.write("Wpisz tytuł i wykonawcę, a znajdziemy muzyczne dusze pokrewne.")
 
-tytul = st.text_input("Tytuł piosenki", "Home Is Not a Place")
-artysta = st.text_input("Wykonawca", "Katu")
+# Dane wejściowe
+tytul = st.text_input("Tytuł piosenki", "Blinding Lights")
+artysta = st.text_input("Wykonawca", "The Weeknd")
 limit = st.slider("Ile podobnych utworów chcesz?", 1, 20, 10)
 
 if st.button("Szukaj podobnych"):
-    zapytanie = f"{tytul} {artysta}"
-    wynik = sp.search(q=zapytanie, type='track', limit=1)
+    access_token = get_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
 
-    if not wynik["tracks"]["items"]:
+    # Wyszukiwanie piosenki
+    query = f"{tytul} {artysta}"
+    search_url = f"https://api.spotify.com/v1/search?q={query}&type=track&limit=1"
+    result = requests.get(search_url, headers=headers).json()
+
+    try:
+        track = result["tracks"]["items"][0]
+    except IndexError:
         st.error("Nie znaleziono takiej piosenki.")
         st.stop()
 
-    utwor = wynik["tracks"]["items"][0]
-    track_id = utwor["id"]
-    st.success(f"Znaleziono: {utwor['name']} – {utwor['artists'][0]['name']}")
+    track_id = track["id"]
+    st.success(f"Znaleziono: {track['name']} – {track['artists'][0]['name']}")
+
+    # Pobieranie podobnych
+    rec_url = f"https://api.spotify.com/v1/recommendations?limit={limit}&seed_tracks={track_id}"
+    rec_result = requests.get(rec_url, headers=headers).json()
 
     try:
-        podobne = sp.recommendations(
-            seed_tracks=[track_id],
-            limit=limit
-        )
-    except Exception as e:
-        st.error(f"Błąd podczas pobierania rekomendacji: {e}")
-        st.stop()
+        tracks = rec_result["tracks"]
+        lista = []
+        for t in tracks:
+            lista.append({
+                "Tytuł": t["name"],
+                "Artysta": t["artists"][0]["name"],
+                "Link": t["external_urls"]["spotify"]
+            })
 
-    lista = []
-    for track in podobne["tracks"]:
-        lista.append({
-            "Tytuł": track["name"],
-            "Artysta": track["artists"][0]["name"],
-            "Link": track["external_urls"]["spotify"]
-        })
-
-    df = pd.DataFrame(lista)
-    st.dataframe(df)
-    for piosenka in lista:
-        st.markdown(f"[{piosenka['Tytuł']} – {piosenka['Artysta']}]({piosenka['Link']})")
+        df = pd.DataFrame(lista)
+        st.dataframe(df)
+        for row in lista:
+            st.markdown(f"[{row['Tytuł']} – {row['Artysta']}]({row['Link']})")
+    except KeyError:
+        st.error("Nie udało się pobrać rekomendacji. Prawdopodobnie Spotify znowu coś kombinuje.")
